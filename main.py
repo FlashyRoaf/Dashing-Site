@@ -5,7 +5,7 @@ import math
 import os
 from pygame.locals import *
 from scripts.entities import PhysicsEntity, Player, Enemy, Boss
-from scripts.utils import load_image, current_fps, load_images, Animation, load_sound, Fast_Rect, Text, saving, loading_save, Level_selector
+from scripts.utils import load_image, current_fps, load_images, Animation, load_sound, Fast_Rect, Text, saving, loading_save, Level_selector, Popup
 from scripts.tilemap import Tilemap
 from scripts.clouds import Clouds
 from scripts.particle import Particle
@@ -23,6 +23,7 @@ class Game:
         self.nonoutline_display = pygame.Surface((400, 240))
         self.mainClock = pygame.time.Clock()
         self.game_font = pygame.font.Font(None, 25)
+        self.big_game_font = pygame.font.Font(None, 40)
         pygame.mouse.set_visible(True)
 
         self.movement = [False, False]
@@ -51,6 +52,8 @@ class Game:
             'fireball': load_images("fireball", True),
             'life': pygame.Surface((20, 10)),
             'title': load_image("title.png", "y"),
+            'settings': load_image("buttons/setting.png", "y"),
+            'close': load_image("buttons/close.png", "y"),
         }
 
         self.sfx = {
@@ -66,8 +69,15 @@ class Game:
             "stage": 0,
         }
 
+        self.settings = {
+            "1": False,
+            "2": True,
+            "3": True,
+        }
+
         try:
             self.data = loading_save("./data/save.json")
+            self.settings = loading_save("./data/settings.json")
         except FileNotFoundError:
             pass
 
@@ -81,7 +91,7 @@ class Game:
         self.clouds = Clouds(self.assets["cloud"], 12)
         self.screen_shake = 0
 
-        self.show_fps = False
+        self.paused = False
     
     def load_level(self, map_id, path=None):
         self.assets["life"].fill("red")
@@ -110,8 +120,42 @@ class Game:
         self.scroll = [0, 0]
         self.transition = -30
 
+    def pause_game(self):
+        main_menu_button = Fast_Rect((140, 180), (120, 40), self.game_font, text="Main menu", image=None)
+        pause_text = Text((145, 40), self.big_game_font, "Paused", "black")
+        clicking = False
+        while self.paused:
+            mouse_pos = pygame.mouse.get_pos()
+            mouse_pos = (mouse_pos[0] / (self.screen.get_width() / self.display.get_width()), mouse_pos[1] / (self.screen.get_height() / self.display.get_height()))
+
+            if main_menu_button.rect.collidepoint(mouse_pos) and clicking:
+                self.paused = False
+                self.main_menu()
+
+            for event in pygame.event.get():
+                if event.type == QUIT:
+                    pygame.quit()
+                    sys.exit()
+                if event.type == KEYDOWN:
+                    if event.key == K_ESCAPE:
+                        self.paused = False
+                if event.type == MOUSEBUTTONDOWN:
+                    if event.button == 1:
+                        clicking = True
+                if event.type == MOUSEBUTTONUP:
+                    if event.button == 1:
+                        clicking = False
+                
+            
+            main_menu_button.render(self.display, (3,4))
+            pause_text.render(self.display)
+            
+            self.nonoutline_display.blit(self.display, (0,0))
+            self.screen.blit(pygame.transform.scale(self.nonoutline_display, self.screen.get_size()), (0,0))
+            pygame.display.update()
         
     def run(self, level):
+        # MARK: Main game
         MAPS_PATH = "./data/maps/"
         self.load_level(level, MAPS_PATH)
         self.level = level
@@ -165,12 +209,12 @@ class Game:
                     self.enemies.remove(enemy)
 
             if self.life > 0:
-                self.player.update(self.tilemap, (self.movement[1] - self.movement[0], 0))
+                self.player.update(self.tilemap, (self.movement[1] - self.movement[0], 0), details=self.settings["3"])
                 self.player.render(self.display, offset=render_scroll)
 
             for projectile in self.projectiles.copy():
                 kill = projectile.update()
-                projectile.render(self.display, offset=render_scroll)
+                projectile.render(self.display, offset=render_scroll, details=self.settings["3"])
 
                 if abs(self.player.dashing) < 50:
                     if self.player.rect().collidepoint(projectile.pos):
@@ -199,10 +243,11 @@ class Game:
                 if kill:
                     self.sparks.remove(spark)
             
-            display_mask = pygame.mask.from_surface(self.display)
-            display_silhouette = display_mask.to_surface(setcolor=(0, 0, 0, 180), unsetcolor=(0, 0, 0, 0))
-            for offset in [(-1,0), (1,0), (0,-1), (0,1)]:
-                self.nonoutline_display.blit(display_silhouette, offset)
+            if self.settings["2"]:
+                display_mask = pygame.mask.from_surface(self.display)
+                display_silhouette = display_mask.to_surface(setcolor=(0, 0, 0, 180), unsetcolor=(0, 0, 0, 0))
+                for offset in [(-1,0), (1,0), (0,-1), (0,1)]:
+                    self.nonoutline_display.blit(display_silhouette, offset)
 
 
             for particle in self.particles.copy():
@@ -224,7 +269,7 @@ class Game:
                     sys.exit()
                 if event.type == KEYDOWN:
                     if event.key == K_ESCAPE:
-                        self.main_menu()
+                        self.paused = True
                     if event.key == K_a:
                         self.movement[0] = True
                     if event.key == K_d:
@@ -236,7 +281,7 @@ class Game:
                     if event.key == K_k:
                         self.pickup = True
                     if event.key == K_F2:
-                        self.show_fps = not self.show_fps
+                        self.settings["1"] = not self.settings["1"]
                 if event.type == KEYUP:
                     if event.key == K_a:
                         self.movement[0] = False
@@ -258,17 +303,24 @@ class Game:
         
             screenshake_offset = (random.random() * self.screen_shake - self.screen_shake / 2, random.random() * self.screen_shake - self.screen_shake / 2)
             self.screen.blit(pygame.transform.scale(self.nonoutline_display, self.screen.get_size()), screenshake_offset)
+
+            if self.paused:
+                self.pause_game()
         
-            current_fps(self.mainClock, self.game_font, self.screen, "black", self.show_fps)
+            current_fps(self.mainClock, self.game_font, self.screen, "black", self.settings["1"])
             pygame.display.update()
             self.mainClock.tick(60)
 
     def main_menu(self):
-        screen = pygame.Surface((400, 240))
+        # MARK: Main menu
         game_font = pygame.font.Font(None, 20)
 
-        stage_button = Fast_Rect((80, 180), (80, 40), self.game_font,  text="Stage")
-        dodging_button = Fast_Rect((240, 180), (80, 40), self.game_font, text="Dodging")
+        stage_button = Fast_Rect((80, 180), (80, 40), self.game_font,  text="Stage", image=None)
+        dodging_button = Fast_Rect((240, 180), (80, 40), self.game_font, text="Dodging", image=None)
+
+        settings_button = Fast_Rect((self.display.get_width() - self.assets["settings"].get_width() - 3, self.display.get_height() - self.assets["settings"].get_height() - 3), (32,32), self.game_font, self.assets["settings"])
+
+        settings_popup = Popup(self, (50, 20), (300, 200), self.game_font, text=["Show fps", "Show outline", "Show details"])
 
         self.tilemap.load_map("./map1.json")
 
@@ -284,7 +336,7 @@ class Game:
         picking_stage = False
 
         for i in range(len(sorted(os.listdir("data/maps")))):
-            levels.append(Level_selector(self, (23 * (i - 1) + 72, self.display.get_height() // 2 - 20), (20, 20), game_font, int(i)))
+            levels.append(Level_selector(self, (23 * (i - 1) + 72, self.display.get_height() // 2 - 20), (20, 20), game_font, int(i + 1)))
 
         for tree in self.tilemap.extract([("large_decor", 1), ("large_decor", 4)], keep=True):
             leaf_spawners.append(pygame.Rect(4 + tree["pos"][0], 4 + tree["pos"][1], 23, 13))
@@ -292,18 +344,29 @@ class Game:
         for spawner in self.tilemap.extract([("spawners", 1)]):
             enemies.append(Enemy(self, spawner["pos"], 1, (12,15)))
         
+        for count, item in enumerate(settings_popup.items.copy(), 1):
+            item[2] = self.settings[str(count)]
+        
         pygame.mixer.music.load("./data/music.wav")
         pygame.mixer.music.set_volume(0.5)
         pygame.mixer.music.play(-1)
         while True:
             mouse_pos = pygame.mouse.get_pos()
-            mouse_pos = (mouse_pos[0] / 3.2, mouse_pos[1] / 3)
 
+            for count, item in enumerate(settings_popup.items.copy(), 1):
+                    self.settings[str(count)] = item[2]
+            
+            # mouse_pos = (mouse_pos[0] / 3.2, mouse_pos[1] / 3)
+            mouse_pos = (mouse_pos[0] / (self.screen.get_width() / self.display.get_width()), mouse_pos[1] / (self.screen.get_height() / self.display.get_height()))
             if stage_button.rect.collidepoint(mouse_pos) and clicking:
-                picking_stage = True
+                pygame.time.delay(110)
+                picking_stage ^= True
             
             if dodging_button.rect.collidepoint(mouse_pos) and clicking:
                 self.dodge_mode()
+            
+            if settings_button.rect.collidepoint(mouse_pos) and clicking:
+                settings_popup.show = True
             
             self.display.fill((0, 0, 0, 0))
             self.nonoutline_display.blit(pygame.transform.scale(self.assets["background"], self.display.get_size()), (0,0))
@@ -341,10 +404,11 @@ class Game:
                     pos = (rect.x + random.random() * rect.width, rect.y + random.random() * rect.height)
                     particles.append(Particle(self, "leaf", pos, velocity=[-0.1, 0.3], frame=random.randint(0, 20)))
             
-            display_mask = pygame.mask.from_surface(self.display)
-            display_silhouette = display_mask.to_surface(setcolor=(0, 0, 0, 180), unsetcolor=(0, 0, 0, 0))
-            for offset in [(-1,0), (1,0), (0,-1), (0,1)]:
-                self.nonoutline_display.blit(display_silhouette, offset)
+            if self.settings["2"]:
+                display_mask = pygame.mask.from_surface(self.display)
+                display_silhouette = display_mask.to_surface(setcolor=(0, 0, 0, 180), unsetcolor=(0, 0, 0, 0))
+                for offset in [(-1,0), (1,0), (0,-1), (0,1)]:
+                    self.nonoutline_display.blit(display_silhouette, offset)
             
             for particle in particles.copy():
                 kill = particle.update()
@@ -361,6 +425,7 @@ class Game:
                     level.update(mouse_pos, clicking)
                     level.render(self.display, (3,4))
             
+            
             for event in pygame.event.get():
                 if event.type == QUIT:
                     pygame.quit()
@@ -376,21 +441,25 @@ class Game:
                         pygame.quit()
                         sys.exit()
                     if event.key == K_F2:
-                        self.show_fps = not self.show_fps
+                        self.settings["1"] = not self.settings["1"]
 
             stage_button.render(self.display)
             dodging_button.render(self.display, (2.5,4))
+            settings_button.render(self.display)
             self.display.blit(self.assets["title"], (self.display.get_width() // 2 - self.assets["title"].get_width() // 2, 20))
+            settings_popup.update(mouse_pos, clicking)
+            settings_popup.render(self.display)
 
             self.nonoutline_display.blit(self.display, (0,0))
             
             self.screen.blit(pygame.transform.scale(self.nonoutline_display, self.screen.get_size()), (0,0))
             
-            current_fps(self.mainClock, self.game_font, self.screen, "black", self.show_fps)
+            current_fps(self.mainClock, self.game_font, self.screen, "black", self.settings["1"])
             pygame.display.update()
             self.mainClock.tick(60)
     
     def dodge_mode(self):
+        # MARK: Dodge mode
         MAPS_PATH = "./data/dodging_maps/"
         SAVE_PATH = "./data/save.json"
 
@@ -442,12 +511,12 @@ class Game:
                     self.enemies.remove(enemy)
 
             if self.life > 0:
-                self.player.update(self.tilemap, (self.movement[1] - self.movement[0], 0))
+                self.player.update(self.tilemap, (self.movement[1] - self.movement[0], 0), details=self.settings["3"])
                 self.player.render(self.display, offset=render_scroll)
 
             for projectile in self.projectiles.copy():
                 kill = projectile.update()
-                projectile.render(self.display, offset=render_scroll)
+                projectile.render(self.display, offset=render_scroll, details=self.settings["3"])
 
                 if abs(self.player.dashing) < 50:
                     if self.player.rect().collidepoint(projectile.pos):
@@ -472,10 +541,11 @@ class Game:
                 if kill:
                     self.sparks.remove(spark)
             
-            display_mask = pygame.mask.from_surface(self.display)
-            display_silhouette = display_mask.to_surface(setcolor=(0, 0, 0, 180), unsetcolor=(0, 0, 0, 0))
-            for offset in [(-1,0), (1,0), (0,-1), (0,1)]:
-                self.nonoutline_display.blit(display_silhouette, offset)
+            if self.settings["2"]:
+                display_mask = pygame.mask.from_surface(self.display)
+                display_silhouette = display_mask.to_surface(setcolor=(0, 0, 0, 180), unsetcolor=(0, 0, 0, 0))
+                for offset in [(-1,0), (1,0), (0,-1), (0,1)]:
+                    self.nonoutline_display.blit(display_silhouette, offset)
 
 
             for particle in self.particles.copy():
@@ -521,7 +591,7 @@ class Game:
                     sys.exit()
                 if event.type == KEYDOWN:
                     if event.key == K_ESCAPE:
-                        self.main_menu()
+                        self.paused = True
                     if event.key == K_a:
                         self.movement[0] = True
                     if event.key == K_d:
@@ -533,7 +603,7 @@ class Game:
                     if event.key == K_k:
                         self.pickup = True
                     if event.key == K_F2:
-                        self.show_fps = not self.show_fps
+                        self.settings["1"] = not self.settings["1"]
                 if event.type == KEYUP:
                     if event.key == K_a:
                         self.movement[0] = False
@@ -559,9 +629,13 @@ class Game:
         
             screenshake_offset = (random.random() * self.screen_shake - self.screen_shake / 2, random.random() * self.screen_shake - self.screen_shake / 2)
             self.screen.blit(pygame.transform.scale(self.nonoutline_display, self.screen.get_size()), screenshake_offset)
+
+            if self.paused:
+                self.pause_game()
         
-            current_fps(self.mainClock, self.game_font, self.screen, "black", self.show_fps)
+            current_fps(self.mainClock, self.game_font, self.screen, "black", self.settings["1"])
             pygame.display.update()
             self.mainClock.tick(60)
+            
 
 Game().main_menu()

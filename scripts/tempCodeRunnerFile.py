@@ -1,3 +1,2 @@
-
-x = min(100, 150)
-print(x)
+bro = ["fkoefk", "kfofk", "kfowkfo"]
+print(enumerate(bro))

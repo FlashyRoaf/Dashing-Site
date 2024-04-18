@@ -82,21 +82,22 @@ class Player(PhysicsEntity):
         self.wall_slide = False
         self.dashing = 0
 
-    def update(self, tilemap, movement=(0, 0)):
+    def update(self, tilemap, movement=(0, 0), details=True):
         super().update(tilemap, movement)
 
         if self.colissions["down"]:
             self.air_time = 0
             self.max_jumps = 1
-            if movement[0] != 0 or self.dashing:
-                if tilemap.solid_check((self.pos[0], self.pos[1] + 23), ai=False, t_type="grass"):
-                    pvelocity = [0, -math.sin(random.random() * 9) * 0.2]
-                    luck = random.random() + 0.2 + abs(self.dashing)
-                    if luck > 40 if self.dashing else luck > 1.1:
-                        if self.flip:
-                            self.game.particles.append(Particle(self.game, "leaf", self.rect().bottomright, pvelocity, random.randint(0, 20)))
-                        else:
-                            self.game.particles.append(Particle(self.game, "leaf", self.rect().bottomleft, pvelocity, random.randint(0, 20)))
+            if details:
+                if movement[0] != 0 or self.dashing:
+                    if tilemap.solid_check((self.pos[0], self.pos[1] + 23), ai=False, t_type="grass"):
+                        pvelocity = [0, -math.sin(random.random() * 9) * 0.2]
+                        luck = random.random() + 0.2 + abs(self.dashing)
+                        if luck > 40 if self.dashing else luck > 1.1:
+                            if self.flip:
+                                self.game.particles.append(Particle(self.game, "leaf", self.rect().bottomright, pvelocity, random.randint(0, 20)))
+                            else:
+                                self.game.particles.append(Particle(self.game, "leaf", self.rect().bottomleft, pvelocity, random.randint(0, 20)))
                 
         else:
             self.air_time += 1
